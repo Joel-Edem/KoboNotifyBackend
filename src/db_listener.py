@@ -1,7 +1,9 @@
 import json
+
+from logger import logger
 from src.generate_triggers_sql import generate_trigger_sql
 
-EVENTS = ('update', 'insert')
+EVENTS = ('insert',)
 service_name = 'outbound_msg'
 table_name = 'UserMessages_outgoingmessage'
 
@@ -14,7 +16,6 @@ async def handle_notify(*args):
 
     new_data = json.loads(args[-1])
     data = new_data['new_data']
-    print(data)
 
 
 # noinspection PyProtectedMember
@@ -27,36 +28,34 @@ class DbListener:
         self.callback = callback
 
     async def connect_to_db(self):
-        print("connecting to data base")
+        logger.debug("connecting to data base" ,'blue')
         await self.db.init()
         self.connection = await self.db._engine.connect()
         _raw_conn = await self.connection.get_raw_connection()
         self.cursor = _raw_conn.driver_connection
-        print("connected to database")
+        logger.debug("connected to database")
 
     async def _configure_db(self):
-        print("configuring database")
+        logger.debug("configuring database")
         sql = generate_trigger_sql(service_name, table_name)
         await self.cursor.execute(sql)
-        print("database configured ")
+        logger.debug("database configured ")
 
     async def add_handler(self):
-        print("adding handlerS")
+        logger.debug("adding handlerS")
         for event in EVENTS:
             await self.cursor.execute(f'LISTEN {service_name}_{event};')
             await self.cursor.add_listener(f"{service_name}_{event}", self.callback)
-        print("handlers added ")
+        logger.debug("handlers added ")
 
     async def start(self):
-        print((" * " * 6) + "Starting Service" + (" * " * 6))
+        logger.debug("Starting db listener")
         await self.connect_to_db()
         await self._configure_db()
         await self.add_handler()
-        print((" * " * 6) + "Service Started" + (" * " * 6))
-        # print("started")
+        logger.debug("db listener started")
 
     async def stop(self):
-        # print((" * " * 6) + "Stopping Service" + (" * " * 6))
         await self.connection.close()
         await self.db.stop()
-        print((" * " * 6) + "Service Stopped" + (" * " * 6))
+        logger.debug('db listener stopped', 'red')
