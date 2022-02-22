@@ -1,7 +1,7 @@
 import json
 
 from logger import logger
-from src.generate_triggers_sql import generate_trigger_sql
+from src.generate_triggers_sql import generate_triggers
 
 EVENTS = ('insert',)
 service_name = 'outbound_msg'
@@ -25,6 +25,7 @@ class DbListener:
         self.connection = None
         self.cursor = None
         self.db = _db
+        self.cleanup = ""
         self.callback = callback
 
     async def connect_to_db(self):
@@ -37,7 +38,7 @@ class DbListener:
 
     async def _configure_db(self):
         logger.debug("configuring database")
-        sql = generate_trigger_sql(service_name, table_name, options={'triggers': ['insert', ]})
+        sql, self.cleanup = generate_triggers(service_name, table_name, options={'triggers': ['insert', ]})
         await self.cursor.execute(sql)
         logger.debug("database configured ")
 
@@ -56,6 +57,7 @@ class DbListener:
         logger.debug("db listener started")
 
     async def stop(self):
+        await self.cursor.execute(self.cleanup)
         await self.connection.close()
         await self.db.stop()
         logger.debug('db listener stopped', 'red')

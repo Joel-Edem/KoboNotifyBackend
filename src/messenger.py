@@ -101,9 +101,6 @@ class Email:
         return message
 
 
-# todo update status on load
-
-
 class MessageStatus(enum.Enum):
     PENDING = "PENDING"
     SENDING = "SENDING"
@@ -263,7 +260,6 @@ class Messenger:
         return email
 
     async def start(self):
-        # todo start workers to process messages
         self.running = True
         self.http_conn = aiohttp.ClientSession()
         await asyncio.gather(

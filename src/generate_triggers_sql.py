@@ -2,11 +2,11 @@ from src.Config import DEFAULT_TRIGGER_OPTIONS
 
 
 # noinspection SqlResolve,PyPep8Naming
-def generate_trigger_sql(service_name, table_name, save_file=True, options: DEFAULT_TRIGGER_OPTIONS = None):
+def generate_triggers(service_name, table_name, save_file=True, options: DEFAULT_TRIGGER_OPTIONS = None) -> list[str]:
     """
     Creates triggers with the given SERVICE_NAME and appends '_update', '_insert' or '_delete'
     to corresponding triggers
-    :return:
+    :return: [setup sql, cleanup sql]
     """
 
     if options is None:
@@ -91,15 +91,18 @@ def generate_trigger_sql(service_name, table_name, save_file=True, options: DEFA
         $body$ LANGUAGE plpgsql;
             
         """
+    CLEAN_UP_SQL = f""""""
     for _trig in triggers:
         SQL += t_init[_trig]
-
+        CLEAN_UP_SQL += t_init[_trig]
+    CLEAN_UP_SQL += f"""DROP FUNCTION IF EXISTS table_update_notify CASCADE;"""
     if save_file:
         with open(options['output_file'], 'w') as file:
             file.write(SQL)
+        with open(options['output_file'].replace(".sql", "_cleanup.sql"), 'w') as file:
+            file.write(CLEAN_UP_SQL)
+    return [SQL, CLEAN_UP_SQL]
 
-    return SQL
 
-
-if __name__ == "__main__":
-    generate_trigger_sql('outbound_msg', 'UserMessages_outgoingmessage')
+# if __name__ == "__main__":
+#     generate_trigger_sql('outbound_msg', 'UserMessages_outgoingmessage')
