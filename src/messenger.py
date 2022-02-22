@@ -285,5 +285,3 @@ class Messenger:
         )
 
 
-        # await asyncio.gather(*asyncio.all_tasks(self.loop))
-

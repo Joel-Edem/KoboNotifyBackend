@@ -11,6 +11,10 @@ def generate_trigger_sql(service_name, table_name, save_file=True, options: DEFA
 
     if options is None:
         options = DEFAULT_TRIGGER_OPTIONS
+    else:
+        for k in DEFAULT_TRIGGER_OPTIONS.keys():
+            if not options.get(k):
+                options[k] = DEFAULT_TRIGGER_OPTIONS[k]
 
     triggers = options['triggers'] if len(options.get('triggers', [])) else DEFAULT_TRIGGER_OPTIONS['triggers']
     _update_name = f'{service_name}_update' if not options.get(
@@ -45,6 +49,26 @@ def generate_trigger_sql(service_name, table_name, save_file=True, options: DEFA
         'delete': _del_blk,
         'insert': __insert_blk
     }
+    t_init = {
+        'update': f"""
+         DROP TRIGGER IF EXISTS {_update_name}  ON "{table_name}";
+         CREATE TRIGGER {_update_name} AFTER UPDATE ON "{table_name}"
+         FOR EACH ROW EXECUTE PROCEDURE table_update_notify();
+
+         """,
+        'delete': f"""
+        DROP TRIGGER IF EXISTS {_del_name} ON "{table_name}";
+        CREATE TRIGGER {_del_name} AFTER DELETE ON "{table_name}" 
+        FOR EACH ROW EXECUTE PROCEDURE table_update_notify(); 
+
+        """,
+        'insert': f"""
+        DROP TRIGGER IF EXISTS {_insert_name} ON "{table_name}";
+        CREATE TRIGGER {_insert_name} AFTER INSERT ON "{table_name}" 
+        FOR EACH ROW EXECUTE PROCEDURE table_update_notify();
+
+        """
+    }
 
     func_body = ""
     for i, _trig in enumerate(triggers):
@@ -65,17 +89,11 @@ def generate_trigger_sql(service_name, table_name, save_file=True, options: DEFA
             END IF;
         END;
         $body$ LANGUAGE plpgsql;
-        
-        DROP TRIGGER IF EXISTS {_update_name}  ON "{table_name}";
-        CREATE TRIGGER {_update_name} AFTER UPDATE ON "{table_name}" 
-        FOR EACH ROW EXECUTE PROCEDURE table_update_notify();
-        DROP TRIGGER IF EXISTS {_insert_name} ON "{table_name}";
-        CREATE TRIGGER {_insert_name} AFTER INSERT ON "{table_name}" 
-        FOR EACH ROW EXECUTE PROCEDURE table_update_notify();
-        DROP TRIGGER IF EXISTS {_del_name} ON "{table_name}";
-        CREATE TRIGGER {_del_name} AFTER DELETE ON "{table_name}" 
-        FOR EACH ROW EXECUTE PROCEDURE table_update_notify(); 
+            
         """
+    for _trig in triggers:
+        SQL += t_init[_trig]
+
     if save_file:
         with open(options['output_file'], 'w') as file:
             file.write(SQL)

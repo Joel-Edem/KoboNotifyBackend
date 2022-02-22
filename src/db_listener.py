@@ -28,7 +28,7 @@ class DbListener:
         self.callback = callback
 
     async def connect_to_db(self):
-        logger.debug("connecting to data base" ,'blue')
+        logger.debug("connecting to data base", 'blue')
         await self.db.init()
         self.connection = await self.db._engine.connect()
         _raw_conn = await self.connection.get_raw_connection()
@@ -37,7 +37,7 @@ class DbListener:
 
     async def _configure_db(self):
         logger.debug("configuring database")
-        sql = generate_trigger_sql(service_name, table_name)
+        sql = generate_trigger_sql(service_name, table_name, options={'triggers': ['insert', ]})
         await self.cursor.execute(sql)
         logger.debug("database configured ")
 

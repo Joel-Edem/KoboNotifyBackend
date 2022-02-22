@@ -27,3 +27,4 @@ if __name__ == "__main__":
         loop.close()
         logger.debug((" * " * 6) + "Service Stopped" + (" * " * 6), 'green')
 
+# todo clean up triggers
