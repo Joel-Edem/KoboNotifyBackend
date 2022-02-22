@@ -139,6 +139,7 @@ class Messenger:
         while self.running:
             if self.curr_workers < self.max_workers:
                 data = await self.msq_queue.get()
+                self.curr_workers += 1
                 self.loop.create_task(self.process_message(data))
 
     async def process_message(self, data):
@@ -160,6 +161,7 @@ class Messenger:
         finally:
             self.curr_workers -= 1
 
+    # noinspection SqlWithoutWhere
     async def change_message_status(self, msg_id: int, status: MessageStatus.SENDING):
         """
         Set message status when processing and after completion
@@ -167,17 +169,14 @@ class Messenger:
         :param status:
         :return:
         """
-        delivered_on = f"delivered_on={datetime.datetime.now()}"
+        delivered_on = f", delivered_on='{datetime.datetime.now()}'" if status == MessageStatus.DELIVERED else ''
         sql = f"""
-                    UPDATE "UserMessages_outgoingmessage"
-                    WHERE id=:msg_id
-                    SET status={status.name} 
-                        {delivered_on if status == MessageStatus.DELIVERED else ''}
-                """
-
-        async with self.db.session() as session:
+        UPDATE "UserMessages_outgoingmessage" SET status='{status.name}' {delivered_on} WHERE id=:msg_id
+        """
+        async with self.db.session as session:
             t = text(sql).bindparams(msg_id=msg_id)
-            res = await session.execute(t)
+            await session.execute(t)
+            await session.commit()
 
     async def send_sms(self, sms: SMS) -> MessageStatus:
         retries = 0
@@ -216,7 +215,7 @@ class Messenger:
         if data['send_via'] not in ["EMAIL", "PHONE"]:
             raise ValueError(f"Invalid delivery method set. Expected EMAIL or PHONE got {data['send_via']}")
 
-        self.loop.create_task(self.change_message_status(data['id'], MessageStatus.SENDING.name))
+        self.loop.create_task(self.change_message_status(data['id'], MessageStatus.SENDING))
         await self.msq_queue.put(data)
 
     async def load_message(self, asset_id, msg_type) -> str:
@@ -228,15 +227,13 @@ class Messenger:
         """
         _msg_type = "sms_message" if msg_type == 'PHONE' else 'email_message'
         sql = f"""
-            SELECT "UserAssets_userasset".{_msg_type}
-            FROM "UserAssets_userasset" 
-            WHERE "UserAssets_userasset"."asset_id"=:asset_id
+            SELECT "UserAssets_userasset".{_msg_type} FROM "UserAssets_userasset" WHERE id=:asset_id
         """
 
-        async with self.db.session() as session:
+        async with self.db.session as session:
             t = text(sql).bindparams(asset_id=asset_id).columns(**{f"{_msg_type}": String})
             res = await session.execute(t)
-            return res.get(_msg_type)
+            return res.scalars().first()
 
     async def prepare_sms(self, data) -> SMS:
         message = await self.load_message(data['asset_id'], msg_type="PHONE")
@@ -272,12 +269,10 @@ class Messenger:
         self.running = False
         self.consumer.cancel()
         cur_tasks = [t for t in asyncio.all_tasks(self.loop) if t.get_coro().__name__ not in (
-                'close', 'stop', 'process_messages')]
+            'close', 'stop', 'process_messages')]
         if cur_tasks:
             await asyncio.wait(cur_tasks, timeout=60)
         await asyncio.gather(
             self.http_conn.close(),
             self.smtp_conns.stop(),
         )
-
-
