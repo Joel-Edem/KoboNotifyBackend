@@ -2,17 +2,19 @@ import asyncio
 import datetime
 import enum
 import json
+import ssl
 from asyncio.queues import Queue
 from dataclasses import dataclass
 from typing import Optional
 
 import aiohttp
 import aiosmtplib
+import certifi
 from jinja2 import Template
 
 from logger import logger
 from src import env
-from src.Config import SMTPConfig
+from src.Config import SMTPConfig, SMS_Endpoint, SMS_API_KEY, SMS_SENDER_ID
 from src.db import AsyncDatabaseSession
 from src.smtp_connection import AsyncSMTPConnectionPool
 from email.mime.multipart import MIMEMultipart
@@ -117,7 +119,7 @@ class Messenger:
         self.loop = _loop or asyncio.get_event_loop()
         self.msq_queue = msg_queue
         self.smtp_conns = AsyncSMTPConnectionPool(max_connections=12, loop=self.loop)
-        self.http_conn = None
+        self.http_conn: Optional[aiohttp.ClientSession] = None
         self.db = _db
         self.max_workers = 12
         self.curr_workers = 0
@@ -131,8 +133,36 @@ class Messenger:
         :param phone_num:
         :return:
         """
+        # ?key = __api_key__ & to = __recipient__ & msg = __msg__ & sender_id = __sender__id
+        data = {
+            "key": SMS_API_KEY,
+            "sender_id": SMS_SENDER_ID,
+            "to": [phone_num],
+            "msg": msg,
+        }
+
+        async with self.http_conn.post(
+                SMS_Endpoint,
+                headers={"Accept": "application/json",  "Content-Type": "application/json"},
+                data=data, ssl=ssl.create_default_context(cafile=certifi.where())
+        ) as resp:
+            try:
+                res = await resp.json()
+                logger.debug(f"res from sms api {res}")
+                logger.debug(f"request status code ==> {resp.status}")
+                status_code = int(res.get("code", 0))
+                logger.debug(f"API STATUS CODE ==> {status_code}")
+                if status_code == 1000:
+                    return True
+                elif status_code == 1005:
+                    logger.error("INVALID PHONE NUMBER", "red")
+                elif status_code == 1003:
+                    logger.error("NO CREDIT ON SMS ACCOUNT", "red")
+            except json.JSONDecodeError:
+                logger.error("failed to parse response from SMS API")
+
         logger.error('NOT IMPLEMENTED', 'red')
-        return True
+        return False
 
     async def process_messages(self):
 
